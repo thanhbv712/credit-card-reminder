@@ -185,18 +185,40 @@ def parse_balance_input(raw: str) -> str:
     return f"{raw} VNĐ" if raw else "N/A"
 
 
+def vib_due_date() -> date:
+    """VIB luôn đến hạn ngày 25 hàng tháng."""
+    today = date.today()
+    due = date(today.year, today.month, 25)
+    if today.day > 25:
+        if today.month == 12:
+            due = date(today.year + 1, 1, 25)
+        else:
+            due = date(today.year, today.month + 1, 25)
+    return due
+
+
 def load_manual_dates() -> list[dict]:
-    """Load manually entered due dates for HSBC, VIB, VPBank."""
-    if not MANUAL_DATES_FILE.exists():
-        return []
-    data = json.loads(MANUAL_DATES_FILE.read_text(encoding="utf-8"))
+    """Load manually entered due dates for HSBC, VPBank. VIB tự động ngày 25."""
     results = []
+
+    # VIB: tự động ngày 25 hàng tháng
+    results.append({
+        "bank": "VIB",
+        "due_date": vib_due_date(),
+        "balance": "N/A",
+    })
+
+    if not MANUAL_DATES_FILE.exists():
+        return results
+
+    data = json.loads(MANUAL_DATES_FILE.read_text(encoding="utf-8"))
     for entry in data:
+        if entry.get("bank") == "VIB":
+            continue  # skip, đã tự generate
         due_str = entry.get("due_date", "").strip()
         if not due_str:
             continue
         try:
-            # Accept DD/MM/YYYY or YYYY-MM-DD
             if "/" in due_str:
                 d, m, y = due_str.split("/")
                 due_date = date(int(y), int(m), int(d))
@@ -389,10 +411,9 @@ def ask_manual_input():
     Tự detect ngân hàng theo ngày hiện tại, hoặc đọc env ASK_BANK.
     Lịch chốt sao kê: HSBC=5, VIB=25, VPBank=27 → hỏi sau 2 ngày.
     """
-    # Map: ngày hỏi → ngân hàng
+    # Map: ngày hỏi → ngân hàng (VIB tự động, không cần hỏi)
     SCHEDULE = {
         7:  ["HSBC"],
-        27: ["VIB"],
         29: ["VPBank"],
     }
 
@@ -400,7 +421,7 @@ def ask_manual_input():
     today_day = date.today().day
 
     if ask_bank_env == "all":
-        banks = ["HSBC", "VIB", "VPBank"]
+        banks = ["HSBC", "VPBank"]
     elif ask_bank_env not in ("auto", ""):
         # Manual trigger với tên ngân hàng cụ thể
         banks = [ask_bank_env.upper()]
@@ -572,7 +593,7 @@ def _send_list():
     today = date.today()
     lines = ["📊 <b>Thông tin sao kê các thẻ tín dụng</b>\n"]
 
-    # Manual banks (HSBC, VIB, VPBank)
+    # Manual banks (HSBC, VPBank) + VIB auto
     manual = load_manual_dates()
     manual_map = {e["bank"]: e for e in manual}
 

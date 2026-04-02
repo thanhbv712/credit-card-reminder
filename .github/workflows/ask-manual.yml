@@ -4,9 +4,7 @@ on:
   schedule:
     # HSBC: ngày chốt sao kê 5 → hỏi ngày 7 lúc 8:00 AM GMT+7 (01:00 UTC)
     - cron: "0 1 7 * *"
-    # VIB: ngày chốt sao kê 25 → hỏi ngày 27
-    - cron: "0 1 27 * *"
-    # VPBank: ngày chốt sao kê 27 → hỏi ngày 29
+    # VPBank: ngày chốt sao kê 27 → hỏi ngày 29 (VIB tự động ngày 25)
     - cron: "0 1 29 * *"
   workflow_dispatch:
     inputs:

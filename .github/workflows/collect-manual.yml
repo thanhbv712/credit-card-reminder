@@ -2,9 +2,8 @@ name: Collect Manual Card Dates
 
 on:
   schedule:
-    # Thu thập reply sau 12 tiếng: ngày 7, 27, 29 lúc 8:00 PM GMT+7 (13:00 UTC)
+    # Thu thập reply sau 12 tiếng: ngày 7, 29 lúc 8:00 PM GMT+7 (13:00 UTC)
     - cron: "0 13 7 * *"
-    - cron: "0 13 27 * *"
     - cron: "0 13 29 * *"
   workflow_dispatch:
 

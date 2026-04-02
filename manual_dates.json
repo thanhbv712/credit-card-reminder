@@ -1,17 +1,12 @@
 [
   {
     "bank": "HSBC",
-    "due_date": "29/03/2026",
-    "balance": "12456k"
-  },
-  {
-    "bank": "VIB",
     "due_date": "",
     "balance": ""
   },
   {
     "bank": "VPBank",
-    "due_date": "13/04/2026",
-    "balance": "32109k"
+    "due_date": "",
+    "balance": ""
   }
 ]

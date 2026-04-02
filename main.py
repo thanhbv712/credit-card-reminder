@@ -25,6 +25,7 @@ from parser import parse_email
 # ──────────────────────────────────────────────
 
 MANUAL_DATES_FILE = Path("manual_dates.json")
+AUTO_DATES_FILE = Path("auto_dates.json")
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -216,27 +217,97 @@ def save_sent_alerts(alerts: set):
 # Main logic
 # ──────────────────────────────────────────────
 
+def load_auto_dates() -> list[dict]:
+    """Load cached auto dates from auto_dates.json."""
+    if not AUTO_DATES_FILE.exists():
+        return []
+    data = json.loads(AUTO_DATES_FILE.read_text(encoding="utf-8"))
+    results = []
+    for entry in data:
+        due_str = entry.get("due_date", "").strip()
+        if not due_str:
+            continue
+        try:
+            if "/" in due_str:
+                d, m, y = due_str.split("/")
+                due_date = date(int(y), int(m), int(d))
+            else:
+                due_date = date.fromisoformat(due_str)
+            results.append({
+                "bank": entry.get("bank"),
+                "card_number": entry.get("card_number", ""),
+                "due_date": due_date,
+                "balance": entry.get("balance", "N/A"),
+            })
+        except (ValueError, AttributeError):
+            print(f"⚠️ Ngày không hợp lệ trong auto_dates: {due_str}")
+    return results
+
+
+def sync_auto_dates():
+    """
+    Quét email BIDV/SHB mới nhất → lưu vào auto_dates.json.
+    Chạy sau ngày chốt sao kê của từng ngân hàng.
+    """
+    service = get_gmail_service()
+    emails = fetch_bank_emails(service)
+    print(f"📧 Found {len(emails)} bank emails")
+
+    # Group by bank, giữ email mới nhất (Gmail trả về mới nhất trước)
+    best: dict[str, dict] = {}  # key = bank hoặc bank+card_number cho BIDV
+
+    for email in emails:
+        result = parse_email(email["subject"], email["body"], email.get("sender", ""))
+        if not result:
+            continue
+        bank = result["bank"]
+        card = result.get("card_number", "")
+        key = f"{bank}:{card}" if card else bank
+        if key not in best:  # Gmail đã sort mới nhất trước
+            best[key] = result
+
+    if not best:
+        print("⚠️ Không tìm thấy email hợp lệ nào")
+        return
+
+    # Build auto_dates entries
+    entries = []
+    for key, r in best.items():
+        due_str = r["due_date"].strftime("%d/%m/%Y")
+        entries.append({
+            "bank": r["bank"],
+            "card_number": r.get("card_number", ""),
+            "due_date": due_str,
+            "balance": r.get("balance", "N/A"),
+            "synced_at": date.today().isoformat(),
+        })
+        print(f"  ✅ {r['bank']} {r.get('card_number','')} → due {due_str} | {r.get('balance','N/A')}")
+
+    AUTO_DATES_FILE.write_text(
+        json.dumps(entries, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+    # Confirm qua Telegram
+    lines = [f"🔄 <b>Đã đồng bộ dữ liệu sao kê:</b>\n"]
+    for e in entries:
+        card_info = f" ({e['card_number']})" if e['card_number'] else ""
+        lines.append(f"✅ <b>{e['bank']}{card_info}</b>: đến hạn <b>{e['due_date']}</b> | nợ <b>{e['balance']}</b>")
+    send_telegram("\n".join(lines))
+    print(f"✅ Synced {len(entries)} entries to auto_dates.json")
+
+
 def main():
     today = date.today()
     target_date = today + timedelta(days=DAYS_BEFORE)
 
     print(f"📅 Today: {today} | Checking due dates on: {target_date}")
 
-    service = get_gmail_service()
-    emails = fetch_bank_emails(service)
-    print(f"📧 Found {len(emails)} bank emails to check")
-
-    # Collect all due dates: auto (Gmail) + manual
-    all_results = []
-
-    for email in emails:
-        result = parse_email(email["subject"], email["body"], email.get("sender", ""))
-        if result:
-            all_results.append(result)
-
+    # Đọc từ file đã lưu sẵn, không quét email nữa
+    auto = load_auto_dates()
     manual = load_manual_dates()
-    print(f"📝 Manual entries: {len(manual)}")
-    all_results.extend(manual)
+    all_results = auto + manual
+    print(f"📊 Auto: {len(auto)}, Manual: {len(manual)}")
 
     sent_alerts = load_sent_alerts()
     new_alerts = set()
@@ -244,17 +315,18 @@ def main():
 
     for result in all_results:
         bank = result["bank"]
+        card_number = result.get("card_number", "")
         due_date = result["due_date"]
-        min_payment = result["min_payment"]
 
-        alert_key = f"{bank}:{due_date}"
+        alert_key = f"{bank}:{card_number}:{due_date}"
         print(f"  🏦 {bank}: due={due_date}, min={min_payment}")
 
         if due_date == target_date and alert_key not in sent_alerts:
-            balance = result.get("balance", result.get("min_payment", "N/A"))
+            balance = result.get("balance", "N/A")
+            card_info = f" ({card_number})" if card_number else ""
             message = (
                 f"⚠️ <b>Nhắc thanh toán thẻ tín dụng</b>\n\n"
-                f"🏦 Ngân hàng: <b>{bank}</b>\n"
+                f"🏦 Ngân hàng: <b>{bank}{card_info}</b>\n"
                 f"📅 Ngày đến hạn: <b>{due_date.strftime('%d/%m/%Y')}</b>\n"
                 f"💳 Dư nợ cuối kỳ: <b>{balance}</b>\n\n"
                 f"⏰ Hãy thanh toán trước ngày mai để tránh phí phạt!"
@@ -489,9 +561,32 @@ def _send_list():
         else:
             lines.append(f"⚪ <b>{bank}</b>: chưa có dữ liệu tháng này\n")
 
-    # Auto banks: show info from manual_dates if cached, otherwise note
+    # Auto banks (BIDV, SHB)
     lines.append("─────────────────")
-    lines.append("📧 <i>BIDV, SHB: tự động đọc từ Gmail hàng ngày</i>")
+    auto = load_auto_dates()
+    if auto:
+        for entry in auto:
+            due = entry["due_date"]
+            balance = entry.get("balance", "N/A")
+            card = f" ({entry['card_number']})" if entry.get("card_number") else ""
+            days_left = (due - today).days
+            if days_left < 0:
+                status = "🔴 Đã qua hạn"
+            elif days_left == 0:
+                status = "🔴 Hôm nay!"
+            elif days_left == 1:
+                status = "🟡 Ngày mai!"
+            elif days_left <= 3:
+                status = f"🟡 Còn {days_left} ngày"
+            else:
+                status = f"🟢 Còn {days_left} ngày"
+            lines.append(
+                f"{status}\n🏦 <b>{entry['bank']}{card}</b>\n"
+                f"📅 Đến hạn: {due.strftime('%d/%m/%Y')}\n"
+                f"💳 Dư nợ: {balance}\n"
+            )
+    else:
+        lines.append("⚪ <i>BIDV, SHB: chưa có dữ liệu (chờ sync sau ngày chốt sao kê)</i>")
 
     send_telegram("\n".join(lines))
     print("✅ Đã gửi /list")
@@ -503,6 +598,8 @@ if __name__ == "__main__":
             ask_manual_input()
         elif sys.argv[1] == "collect":
             collect_manual_replies()
+        elif sys.argv[1] == "sync":
+            sync_auto_dates()
         elif sys.argv[1] == "commands":
             handle_commands()
         else:

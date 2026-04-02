@@ -63,11 +63,20 @@ def parse_bidv(subject: str, body: str, sender: str = "") -> dict | None:
         r"Closing Balance\s+-?([\d,]+\.?\d*)",
     ]
 
+    # Extract card number "476632******4486"
+    card_m = re.search(r"Card Number\s+([\d*]+)", body)
+    card_number = card_m.group(1) if card_m else ""
+
     due_date = _extract_date(body, due_keywords)
     balance = _extract_text(body, balance_keywords)
 
     if due_date:
-        return {"bank": "BIDV", "due_date": due_date, "balance": f"{balance} VND" if balance else "N/A"}
+        return {
+            "bank": "BIDV",
+            "card_number": card_number,
+            "due_date": due_date,
+            "balance": f"{balance} VND" if balance else "N/A",
+        }
     return None
 
 

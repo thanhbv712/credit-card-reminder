@@ -1,0 +1,16 @@
+[
+  {
+    "bank": "BIDV",
+    "card_number": "",
+    "due_date": "",
+    "balance": "",
+    "synced_at": ""
+  },
+  {
+    "bank": "SHB",
+    "card_number": "",
+    "due_date": "",
+    "balance": "",
+    "synced_at": ""
+  }
+]

@@ -1,0 +1,38 @@
+name: Sync Auto Bank Dates (BIDV, SHB)
+
+on:
+  schedule:
+    # BIDV chốt ngày 20 → sync ngày 22 lúc 8AM GMT+7 (01:00 UTC)
+    - cron: "0 1 22 * *"
+    # SHB chốt ngày 15 → sync ngày 17 lúc 8AM GMT+7
+    - cron: "0 1 17 * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Sync email data
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+        run: python main.py sync
+
+      - name: Commit auto_dates.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add auto_dates.json
+          git diff --staged --quiet || git commit -m "Sync auto bank dates [skip ci]"
+          git push

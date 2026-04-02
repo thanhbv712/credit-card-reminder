@@ -104,28 +104,37 @@ def get_email_body(msg_data: dict) -> str:
 
 def fetch_bank_emails(service) -> list[dict]:
     """Search Gmail for bank statement emails from last 60 days."""
-    query = (
-        "subject:(sao kê OR statement OR credit card OR thẻ tín dụng) "
-        "from:(bidv OR shb OR vib OR vpbank OR hsbc) "
-        "newer_than:60d"
-    )
+    # 2 queries riêng biệt: BIDV theo sender, SHB theo subject
+    queries = [
+        "from:saokethebidv@bidv.com.vn newer_than:60d",
+        "subject:\"Bang sao ke dien tu the tin dung SHB VISA\" newer_than:60d",
+    ]
 
-    result = service.users().messages().list(userId="me", q=query, maxResults=50).execute()
-    messages = result.get("messages", [])
+    message_ids = set()
+    all_messages = []
+
+    for query in queries:
+        result = service.users().messages().list(userId="me", q=query, maxResults=20).execute()
+        for msg in result.get("messages", []):
+            if msg["id"] not in message_ids:
+                message_ids.add(msg["id"])
+                all_messages.append(msg)
 
     emails = []
-    for msg in messages:
+    for msg in all_messages:
         msg_data = service.users().messages().get(
             userId="me", id=msg["id"], format="full"
         ).execute()
 
         headers = {h["name"]: h["value"] for h in msg_data["payload"].get("headers", [])}
         subject = headers.get("Subject", "")
+        sender = headers.get("From", "")
         body = get_email_body(msg_data)
 
         emails.append({
             "id": msg["id"],
             "subject": subject,
+            "sender": sender,
             "body": body,
         })
 
@@ -209,7 +218,7 @@ def main():
     all_results = []
 
     for email in emails:
-        result = parse_email(email["subject"], email["body"])
+        result = parse_email(email["subject"], email["body"], email.get("sender", ""))
         if result:
             all_results.append(result)
 

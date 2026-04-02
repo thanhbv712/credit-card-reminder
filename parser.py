@@ -44,10 +44,12 @@ def parse_amount(text: str) -> str:
 # Bank-specific parsers
 # ──────────────────────────────────────────────
 
-def parse_bidv(subject: str, body: str) -> dict | None:
-    """BIDV credit card statement email."""
-    # Subject often contains: "Sao kê thẻ tín dụng" or "Thông báo sao kê"
-    if not re.search(r"BIDV|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+def parse_bidv(subject: str, body: str, sender: str = "") -> dict | None:
+    """BIDV credit card statement email — from saokethebidv@bidv.com.vn."""
+    # Nhận diện qua sender email (ưu tiên) hoặc keyword
+    if sender and "saokethebidv@bidv.com.vn" not in sender.lower():
+        return None
+    if not sender and not re.search(r"BIDV|sao k[eê]", subject + body, re.IGNORECASE):
         return None
 
     due_keywords = [
@@ -70,9 +72,9 @@ def parse_bidv(subject: str, body: str) -> dict | None:
     return None
 
 
-def parse_shb(subject: str, body: str) -> dict | None:
-    """SHB credit card statement email."""
-    if not re.search(r"SHB|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+def parse_shb(subject: str, body: str, sender: str = "") -> dict | None:
+    """SHB credit card statement email — subject contains 'Bang sao ke dien tu the tin dung SHB VISA'."""
+    if not re.search(r"Bang sao ke dien tu the tin dung SHB VISA", subject, re.IGNORECASE):
         return None
 
     due_keywords = [
@@ -93,7 +95,7 @@ def parse_shb(subject: str, body: str) -> dict | None:
     return None
 
 
-def parse_vib(subject: str, body: str) -> dict | None:
+def parse_vib(subject: str, body: str, sender: str = "") -> dict | None:
     """VIB credit card statement email."""
     if not re.search(r"\bVIB\b|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
         return None
@@ -116,7 +118,7 @@ def parse_vib(subject: str, body: str) -> dict | None:
     return None
 
 
-def parse_vpbank(subject: str, body: str) -> dict | None:
+def parse_vpbank(subject: str, body: str, sender: str = "") -> dict | None:
     """VPBank credit card statement email."""
     if not re.search(r"VPBank|VP\s*Bank|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
         return None
@@ -139,7 +141,7 @@ def parse_vpbank(subject: str, body: str) -> dict | None:
     return None
 
 
-def parse_hsbc(subject: str, body: str) -> dict | None:
+def parse_hsbc(subject: str, body: str, sender: str = "") -> dict | None:
     """HSBC credit card statement email."""
     if not re.search(r"HSBC|credit\s+card\s+statement|sao k[eê]", subject + body, re.IGNORECASE):
         return None
@@ -188,10 +190,10 @@ def _extract_text(text: str, patterns: list[str]) -> str | None:
 ALL_PARSERS = [parse_bidv, parse_shb, parse_vib, parse_vpbank, parse_hsbc]
 
 
-def parse_email(subject: str, body: str) -> dict | None:
+def parse_email(subject: str, body: str, sender: str = "") -> dict | None:
     """Try all parsers, return first match."""
     for parser in ALL_PARSERS:
-        result = parser(subject, body)
+        result = parser(subject, body, sender)
         if result:
             return result
     return None

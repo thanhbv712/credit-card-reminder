@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from email import message_from_bytes
 from pathlib import Path
 
+import html as html_lib
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -88,9 +89,11 @@ def get_email_body(msg_data: dict) -> str:
             if mime == "text/plain" and data:
                 text += base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
             elif mime == "text/html" and data and not text:
-                html = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+                raw_html = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+                # Decode HTML entities (&nbsp; &iacute; &agrave; ...)
+                decoded = html_lib.unescape(raw_html)
                 # Strip HTML tags
-                text += re.sub(r"<[^>]+>", " ", html)
+                text += re.sub(r"<[^>]+>", " ", decoded)
             elif "parts" in part:
                 text += extract_parts(part["parts"])
         return text

@@ -2,10 +2,8 @@ name: Sync Auto Bank Dates (BIDV, SHB)
 
 on:
   schedule:
-    # BIDV chốt ngày 20 → sync ngày 22 lúc 8AM GMT+7 (01:00 UTC)
-    - cron: "0 1 22 * *"
-    # SHB chốt ngày 15 → sync ngày 17 lúc 8AM GMT+7
-    - cron: "0 1 17 * *"
+    # Chạy hàng ngày lúc 8AM GMT+7 (01:00 UTC), tự detect email mới
+    - cron: "0 1 * * *"
   workflow_dispatch:
 
 jobs:

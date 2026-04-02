@@ -246,16 +246,23 @@ def load_auto_dates() -> list[dict]:
 
 def sync_auto_dates():
     """
-    Quét email BIDV/SHB mới nhất → lưu vào auto_dates.json.
-    Chạy sau ngày chốt sao kê của từng ngân hàng.
+    Quét email BIDV/SHB mới nhất → chỉ update auto_dates.json khi có email mới hơn lần sync trước.
+    Chạy hàng ngày, tự detect khi nào có sao kê mới.
     """
     service = get_gmail_service()
     emails = fetch_bank_emails(service)
     print(f"📧 Found {len(emails)} bank emails")
 
-    # Group by bank, giữ email mới nhất (Gmail trả về mới nhất trước)
-    best: dict[str, dict] = {}  # key = bank hoặc bank+card_number cho BIDV
+    # Load existing auto_dates để so sánh
+    existing = {}
+    if AUTO_DATES_FILE.exists():
+        for e in json.loads(AUTO_DATES_FILE.read_text(encoding="utf-8")):
+            card = e.get("card_number", "")
+            key = f"{e['bank']}:{card}" if card else e["bank"]
+            existing[key] = e
 
+    # Group by bank/card, giữ email mới nhất (Gmail sort mới nhất trước)
+    best: dict[str, dict] = {}
     for email in emails:
         result = parse_email(email["subject"], email["body"], email.get("sender", ""))
         if not result:
@@ -263,38 +270,52 @@ def sync_auto_dates():
         bank = result["bank"]
         card = result.get("card_number", "")
         key = f"{bank}:{card}" if card else bank
-        if key not in best:  # Gmail đã sort mới nhất trước
+        if key not in best:
             best[key] = result
 
     if not best:
-        print("⚠️ Không tìm thấy email hợp lệ nào")
+        print("✅ Không có email sao kê mới")
         return
 
-    # Build auto_dates entries
-    entries = []
+    updated_entries = []
+    new_found = []
+
     for key, r in best.items():
         due_str = r["due_date"].strftime("%d/%m/%Y")
-        entries.append({
+        new_entry = {
             "bank": r["bank"],
             "card_number": r.get("card_number", ""),
             "due_date": due_str,
             "balance": r.get("balance", "N/A"),
             "synced_at": date.today().isoformat(),
-        })
-        print(f"  ✅ {r['bank']} {r.get('card_number','')} → due {due_str} | {r.get('balance','N/A')}")
+        }
 
+        old = existing.get(key)
+        # Chỉ coi là "mới" nếu due_date khác với lần sync trước
+        if not old or old.get("due_date") != due_str:
+            new_found.append(new_entry)
+            print(f"  🆕 {r['bank']} {r.get('card_number','')} → due {due_str} | {r.get('balance','N/A')}")
+        else:
+            print(f"  ⏭️ {r['bank']} {r.get('card_number','')} → không đổi ({due_str})")
+
+        updated_entries.append(new_entry)
+
+    # Luôn ghi lại file (giữ dữ liệu mới nhất)
     AUTO_DATES_FILE.write_text(
-        json.dumps(entries, ensure_ascii=False, indent=2),
+        json.dumps(updated_entries, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
 
-    # Confirm qua Telegram
-    lines = [f"🔄 <b>Đã đồng bộ dữ liệu sao kê:</b>\n"]
-    for e in entries:
-        card_info = f" ({e['card_number']})" if e['card_number'] else ""
-        lines.append(f"✅ <b>{e['bank']}{card_info}</b>: đến hạn <b>{e['due_date']}</b> | nợ <b>{e['balance']}</b>")
-    send_telegram("\n".join(lines))
-    print(f"✅ Synced {len(entries)} entries to auto_dates.json")
+    # Chỉ thông báo Telegram khi có sao kê mới
+    if new_found:
+        lines = ["🔄 <b>Sao kê mới đã được cập nhật:</b>\n"]
+        for e in new_found:
+            card_info = f" ({e['card_number']})" if e['card_number'] else ""
+            lines.append(f"✅ <b>{e['bank']}{card_info}</b>: đến hạn <b>{e['due_date']}</b> | nợ <b>{e['balance']}</b>")
+        send_telegram("\n".join(lines))
+        print(f"✅ {len(new_found)} sao kê mới, đã thông báo Telegram")
+    else:
+        print("✅ Không có sao kê mới, bỏ qua")
 
 
 def main():

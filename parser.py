@@ -46,29 +46,29 @@ def parse_amount(text: str) -> str:
 
 def parse_bidv(subject: str, body: str, sender: str = "") -> dict | None:
     """BIDV credit card statement email — from saokethebidv@bidv.com.vn."""
-    # Nhận diện qua sender email (ưu tiên) hoặc keyword
     if sender and "saokethebidv@bidv.com.vn" not in sender.lower():
         return None
     if not sender and not re.search(r"BIDV|sao k[eê]", subject + body, re.IGNORECASE):
         return None
 
     due_keywords = [
-        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
-        r"[Pp]ayment\s+[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
-        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d/\-]+)",
-        r"[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+        # "Ngày hết hạn thanh toán/Due Date 06-04-2026"
+        r"Ng[àa]y h[eế]t h[aạ]n thanh to[áa]n/Due Date\s+([\d\-/]+)",
+        r"Due Date\s+([\d\-/]+)",
+        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d\-/]+)",
     ]
     min_keywords = [
-        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
-        r"[Mm]inimum\s+[Pp]ayment[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
-        r"[Tt][oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        # "Số tiền thanh toán tối thiểu/Minimum due -2,198,944.00"
+        r"S[oố] ti[eề]n thanh to[áa]n t[oố]i thi[eể]u/Minimum due\s+-?([\d,]+\.?\d*)",
+        r"Minimum due\s+-?([\d,]+\.?\d*)",
+        r"t[oố]i thi[eể]u[^:]*[:\s]-?([\d,]+\.?\d*)",
     ]
 
     due_date = _extract_date(body, due_keywords)
     min_payment = _extract_text(body, min_keywords)
 
     if due_date:
-        return {"bank": "BIDV", "due_date": due_date, "min_payment": min_payment or "N/A"}
+        return {"bank": "BIDV", "due_date": due_date, "min_payment": f"{min_payment} VND" if min_payment else "N/A"}
     return None
 
 

@@ -422,12 +422,89 @@ def collect_manual_replies():
         print("⚠️ Không tìm thấy dữ liệu hợp lệ trong các reply")
 
 
+def handle_commands():
+    """
+    Poll Telegram for commands like /list.
+    Chạy mỗi 15 phút qua GitHub Actions.
+    """
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    offset_file = Path("telegram_cmd_offset.txt")
+    offset = int(offset_file.read_text()) if offset_file.exists() else 0
+
+    resp = requests.get(url, params={"offset": offset, "limit": 50, "timeout": 5}, timeout=15)
+    resp.raise_for_status()
+    updates = resp.json().get("result", [])
+
+    if not updates:
+        print("📭 Không có lệnh mới")
+        return
+
+    last_update_id = offset
+
+    for update in updates:
+        last_update_id = update["update_id"] + 1
+        msg = update.get("message", {})
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        text = msg.get("text", "").strip()
+
+        if chat_id != TELEGRAM_CHAT_ID:
+            continue
+
+        if text.lower() == "/list":
+            _send_list()
+
+    offset_file.write_text(str(last_update_id))
+
+
+def _send_list():
+    """Gửi danh sách tất cả thẻ và ngày đến hạn."""
+    today = date.today()
+    lines = ["📊 <b>Thông tin sao kê các thẻ tín dụng</b>\n"]
+
+    # Manual banks (HSBC, VIB, VPBank)
+    manual = load_manual_dates()
+    manual_map = {e["bank"]: e for e in manual}
+
+    for bank in ["HSBC", "VIB", "VPBank"]:
+        entry = manual_map.get(bank)
+        if entry and entry.get("due_date"):
+            due = entry["due_date"]
+            balance = entry.get("balance", "N/A")
+            days_left = (due - today).days
+            if days_left < 0:
+                status = "🔴 Đã qua hạn"
+            elif days_left == 0:
+                status = "🔴 Hôm nay!"
+            elif days_left == 1:
+                status = "🟡 Ngày mai!"
+            elif days_left <= 3:
+                status = f"🟡 Còn {days_left} ngày"
+            else:
+                status = f"🟢 Còn {days_left} ngày"
+            lines.append(
+                f"{status}\n🏦 <b>{bank}</b>\n"
+                f"📅 Đến hạn: {due.strftime('%d/%m/%Y')}\n"
+                f"💳 Dư nợ: {balance}\n"
+            )
+        else:
+            lines.append(f"⚪ <b>{bank}</b>: chưa có dữ liệu tháng này\n")
+
+    # Auto banks: show info from manual_dates if cached, otherwise note
+    lines.append("─────────────────")
+    lines.append("📧 <i>BIDV, SHB: tự động đọc từ Gmail hàng ngày</i>")
+
+    send_telegram("\n".join(lines))
+    print("✅ Đã gửi /list")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "ask":
             ask_manual_input()
         elif sys.argv[1] == "collect":
             collect_manual_replies()
+        elif sys.argv[1] == "commands":
+            handle_commands()
         else:
             print(f"Unknown command: {sys.argv[1]}")
     else:

@@ -1,0 +1,197 @@
+"""
+parser.py - Parse due date & minimum payment from bank statement emails
+Supports: BIDV, SHB, VIB, VPBank, HSBC
+"""
+
+import re
+from datetime import datetime, date
+
+
+def parse_date(text: str) -> date | None:
+    """Try common Vietnamese date formats."""
+    patterns = [
+        r"(\d{2})/(\d{2})/(\d{4})",   # DD/MM/YYYY
+        r"(\d{2})-(\d{2})-(\d{4})",   # DD-MM-YYYY
+        r"(\d{4})-(\d{2})-(\d{2})",   # YYYY-MM-DD
+        r"(\d{2})/(\d{2})/(\d{2})",   # DD/MM/YY
+    ]
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            g = m.groups()
+            try:
+                if len(g[0]) == 4:  # YYYY-MM-DD
+                    return date(int(g[0]), int(g[1]), int(g[2]))
+                elif int(g[2]) < 100:  # DD/MM/YY
+                    return date(2000 + int(g[2]), int(g[1]), int(g[0]))
+                else:
+                    return date(int(g[2]), int(g[1]), int(g[0]))
+            except ValueError:
+                continue
+    return None
+
+
+def parse_amount(text: str) -> str:
+    """Extract currency amount from text."""
+    # Match numbers like 1,234,567 or 1.234.567 or 1234567
+    m = re.search(r"([\d][,.\d]*\d)\s*(?:VND|đ|VNĐ|USD)?", text, re.IGNORECASE)
+    if m:
+        return m.group(0).strip()
+    return "N/A"
+
+
+# ──────────────────────────────────────────────
+# Bank-specific parsers
+# ──────────────────────────────────────────────
+
+def parse_bidv(subject: str, body: str) -> dict | None:
+    """BIDV credit card statement email."""
+    # Subject often contains: "Sao kê thẻ tín dụng" or "Thông báo sao kê"
+    if not re.search(r"BIDV|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+        return None
+
+    due_keywords = [
+        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Pp]ayment\s+[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+    ]
+    min_keywords = [
+        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        r"[Mm]inimum\s+[Pp]ayment[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        r"[Tt][oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+    ]
+
+    due_date = _extract_date(body, due_keywords)
+    min_payment = _extract_text(body, min_keywords)
+
+    if due_date:
+        return {"bank": "BIDV", "due_date": due_date, "min_payment": min_payment or "N/A"}
+    return None
+
+
+def parse_shb(subject: str, body: str) -> dict | None:
+    """SHB credit card statement email."""
+    if not re.search(r"SHB|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+        return None
+
+    due_keywords = [
+        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+    ]
+    min_keywords = [
+        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        r"[Tt][oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+    ]
+
+    due_date = _extract_date(body, due_keywords)
+    min_payment = _extract_text(body, min_keywords)
+
+    if due_date:
+        return {"bank": "SHB", "due_date": due_date, "min_payment": min_payment or "N/A"}
+    return None
+
+
+def parse_vib(subject: str, body: str) -> dict | None:
+    """VIB credit card statement email."""
+    if not re.search(r"\bVIB\b|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+        return None
+
+    due_keywords = [
+        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Pp]ayment\s+[Dd]ue[^:]*[:\s]+([\d/\-]+)",
+        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d/\-]+)",
+    ]
+    min_keywords = [
+        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        r"[Mm]inimum\s+[Aa]mount\s+[Dd]ue[^:]*[:\s]+([\d,. ]+(?:VND|USD|đ)?)",
+    ]
+
+    due_date = _extract_date(body, due_keywords)
+    min_payment = _extract_text(body, min_keywords)
+
+    if due_date:
+        return {"bank": "VIB", "due_date": due_date, "min_payment": min_payment or "N/A"}
+    return None
+
+
+def parse_vpbank(subject: str, body: str) -> dict | None:
+    """VPBank credit card statement email."""
+    if not re.search(r"VPBank|VP\s*Bank|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+        return None
+
+    due_keywords = [
+        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d/\-]+)",
+        r"[Pp]ayment\s+[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+    ]
+    min_keywords = [
+        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        r"[Tt][oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+    ]
+
+    due_date = _extract_date(body, due_keywords)
+    min_payment = _extract_text(body, min_keywords)
+
+    if due_date:
+        return {"bank": "VPBank", "due_date": due_date, "min_payment": min_payment or "N/A"}
+    return None
+
+
+def parse_hsbc(subject: str, body: str) -> dict | None:
+    """HSBC credit card statement email."""
+    if not re.search(r"HSBC|credit\s+card\s+statement|sao k[eê]", subject + body, re.IGNORECASE):
+        return None
+
+    due_keywords = [
+        r"[Pp]ayment\s+[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+        r"[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
+    ]
+    min_keywords = [
+        r"[Mm]inimum\s+[Pp]ayment\s+[Dd]ue[^:]*[:\s]+([\d,. ]+(?:VND|USD|đ)?)",
+        r"[Mm]inimum\s+[Aa]mount\s+[Dd]ue[^:]*[:\s]+([\d,. ]+(?:VND|USD|đ)?)",
+        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|USD|đ)?)",
+    ]
+
+    due_date = _extract_date(body, due_keywords)
+    min_payment = _extract_text(body, min_keywords)
+
+    if due_date:
+        return {"bank": "HSBC", "due_date": due_date, "min_payment": min_payment or "N/A"}
+    return None
+
+
+# ──────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────
+
+def _extract_date(text: str, patterns: list[str]) -> date | None:
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            d = parse_date(m.group(1))
+            if d:
+                return d
+    return None
+
+
+def _extract_text(text: str, patterns: list[str]) -> str | None:
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+ALL_PARSERS = [parse_bidv, parse_shb, parse_vib, parse_vpbank, parse_hsbc]
+
+
+def parse_email(subject: str, body: str) -> dict | None:
+    """Try all parsers, return first match."""
+    for parser in ALL_PARSERS:
+        result = parser(subject, body)
+        if result:
+            return result
+    return None

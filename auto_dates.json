@@ -1,16 +1,9 @@
 [
   {
-    "bank": "BIDV",
+    "bank": "VIB",
     "card_number": "",
-    "due_date": "",
-    "balance": "",
-    "synced_at": ""
-  },
-  {
-    "bank": "SHB",
-    "card_number": "",
-    "due_date": "",
-    "balance": "",
-    "synced_at": ""
+    "due_date": "09/04/2026",
+    "balance": "N/A",
+    "synced_at": "2026-04-02"
   }
 ]

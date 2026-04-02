@@ -1,0 +1,17 @@
+[
+  {
+    "bank": "HSBC",
+    "due_date": "",
+    "min_payment": ""
+  },
+  {
+    "bank": "VIB",
+    "due_date": "",
+    "min_payment": ""
+  },
+  {
+    "bank": "VPBank",
+    "due_date": "",
+    "min_payment": ""
+  }
+]

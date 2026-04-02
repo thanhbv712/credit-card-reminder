@@ -23,6 +23,8 @@ from parser import parse_email
 # Config (from environment variables / GitHub Secrets)
 # ──────────────────────────────────────────────
 
+MANUAL_DATES_FILE = Path("manual_dates.json")
+
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
@@ -150,6 +152,33 @@ def send_telegram(message: str):
 # Dedup helpers
 # ──────────────────────────────────────────────
 
+def load_manual_dates() -> list[dict]:
+    """Load manually entered due dates for HSBC, VIB, VPBank."""
+    if not MANUAL_DATES_FILE.exists():
+        return []
+    data = json.loads(MANUAL_DATES_FILE.read_text(encoding="utf-8"))
+    results = []
+    for entry in data:
+        due_str = entry.get("due_date", "").strip()
+        if not due_str:
+            continue
+        try:
+            # Accept DD/MM/YYYY or YYYY-MM-DD
+            if "/" in due_str:
+                d, m, y = due_str.split("/")
+                due_date = date(int(y), int(m), int(d))
+            else:
+                due_date = date.fromisoformat(due_str)
+            results.append({
+                "bank": entry.get("bank", "Manual"),
+                "due_date": due_date,
+                "min_payment": entry.get("min_payment", "N/A") or "N/A",
+            })
+        except (ValueError, AttributeError):
+            print(f"⚠️ Ngày không hợp lệ cho {entry.get('bank')}: {due_str}")
+    return results
+
+
 def load_sent_alerts() -> set:
     if SENT_ALERTS_FILE.exists():
         data = json.loads(SENT_ALERTS_FILE.read_text())
@@ -175,21 +204,28 @@ def main():
     emails = fetch_bank_emails(service)
     print(f"📧 Found {len(emails)} bank emails to check")
 
+    # Collect all due dates: auto (Gmail) + manual
+    all_results = []
+
+    for email in emails:
+        result = parse_email(email["subject"], email["body"])
+        if result:
+            all_results.append(result)
+
+    manual = load_manual_dates()
+    print(f"📝 Manual entries: {len(manual)}")
+    all_results.extend(manual)
+
     sent_alerts = load_sent_alerts()
     new_alerts = set()
     notified = 0
 
-    for email in emails:
-        result = parse_email(email["subject"], email["body"])
-        if not result:
-            continue
-
+    for result in all_results:
         bank = result["bank"]
         due_date = result["due_date"]
         min_payment = result["min_payment"]
 
         alert_key = f"{bank}:{due_date}"
-
         print(f"  🏦 {bank}: due={due_date}, min={min_payment}")
 
         if due_date == target_date and alert_key not in sent_alerts:

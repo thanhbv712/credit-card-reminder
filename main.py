@@ -116,7 +116,7 @@ def fetch_bank_emails(service) -> list[dict]:
     emails = []
     for msg in messages:
         msg_data = service.users().messages().get(
-            userId="me", messageId=msg["id"], format="full"
+            userId="me", id=msg["id"], format="full"
         ).execute()
 
         headers = {h["name"]: h["value"] for h in msg_data["payload"].get("headers", [])}

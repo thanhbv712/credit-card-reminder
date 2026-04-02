@@ -1,8 +1,8 @@
 [
   {
     "bank": "HSBC",
-    "due_date": "",
-    "min_payment": ""
+    "due_date": "03/04/2026",
+    "min_payment": "500,000 VND"
   },
   {
     "bank": "VIB",

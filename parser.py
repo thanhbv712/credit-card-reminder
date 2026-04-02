@@ -78,20 +78,19 @@ def parse_shb(subject: str, body: str, sender: str = "") -> dict | None:
         return None
 
     due_keywords = [
-        r"[Nn]g[àa]y\s+[đd][eé]n\s+h[aạ]n[^:]*[:\s]+([\d/\-]+)",
-        r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d/\-]+)",
-        r"[Dd]ue\s+[Dd]ate[^:]*[:\s]+([\d/\-]+)",
+        # "Ngày đến hạn thanh toán: 09/04/2026"
+        r"Ng[àa]y [đd][eé]n h[aạ]n thanh to[áa]n\s*:\s*([\d/\-]+)",
     ]
     min_keywords = [
-        r"[Ss][oố]\s+ti[eề]n\s+t[oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
-        r"[Tt][oố]i\s+thi[eể]u[^:]*[:\s]+([\d,. ]+(?:VND|đ|VNĐ)?)",
+        # "Thanh toán tối thiểu (VNĐ): 5,557,085"
+        r"Thanh to[áa]n t[oố]i thi[eể]u\s*\([^)]*\)\s*:\s*([\d,]+)",
     ]
 
     due_date = _extract_date(body, due_keywords)
     min_payment = _extract_text(body, min_keywords)
 
     if due_date:
-        return {"bank": "SHB", "due_date": due_date, "min_payment": min_payment or "N/A"}
+        return {"bank": "SHB", "due_date": due_date, "min_payment": f"{min_payment} VNĐ" if min_payment else "N/A"}
     return None
 
 

@@ -390,9 +390,35 @@ def collect_manual_replies():
             json.dumps(updated, ensure_ascii=False, indent=2),
             encoding="utf-8"
         )
-        send_telegram(f"✅ Đã lưu thông tin <b>{parsed_count}</b> thẻ. Mình sẽ nhắc bạn trước 1 ngày đến hạn!")
+
+        # Build confirmation message
+        lines = []
+        for bank in ["HSBC", "VIB", "VPBank"]:
+            entry = existing_map.get(bank)
+            if entry and entry.get("due_date"):
+                balance_raw = entry.get("balance", "")
+                balance_display = parse_balance_input(balance_raw) if balance_raw else "N/A"
+                lines.append(
+                    f"✅ <b>{bank}</b>: đến hạn <b>{entry['due_date']}</b> | nợ <b>{balance_display}</b>"
+                )
+            else:
+                lines.append(f"⚠️ <b>{bank}</b>: chưa có dữ liệu")
+
+        confirm_msg = (
+            "📋 <b>Đã lưu thông tin sao kê:</b>\n\n"
+            + "\n".join(lines)
+            + "\n\n🔔 Mình sẽ nhắc trước 1 ngày khi đến hạn!"
+        )
+        send_telegram(confirm_msg)
         print(f"✅ Saved {parsed_count} manual entries")
     else:
+        send_telegram(
+            "⚠️ <b>Không nhận được dữ liệu hợp lệ!</b>\n\n"
+            "Vui lòng nhập lại theo format:\n"
+            "<code>HSBC 15/04/2026 12936k</code>\n"
+            "<code>VIB 20/04/2026 8500k</code>\n"
+            "<code>VPBank 22/04/2026 15600k</code>"
+        )
         print("⚠️ Không tìm thấy dữ liệu hợp lệ trong các reply")
 
 

@@ -252,22 +252,51 @@ def main():
 
 def ask_manual_input():
     """
-    Gửi tin nhắn hỏi Thành nhập ngày đến hạn cho 3 ngân hàng thủ công.
-    Chạy vào ngày 1 hàng tháng qua GitHub Actions.
+    Gửi tin nhắn hỏi Thành nhập ngày đến hạn.
+    Tự detect ngân hàng theo ngày hiện tại, hoặc đọc env ASK_BANK.
+    Lịch chốt sao kê: HSBC=5, VIB=25, VPBank=27 → hỏi sau 2 ngày.
     """
-    MANUAL_BANKS = ["HSBC", "VIB", "VPBank"]
+    # Map: ngày hỏi → ngân hàng
+    SCHEDULE = {
+        7:  ["HSBC"],
+        27: ["VIB"],
+        29: ["VPBank"],
+    }
+
+    ask_bank_env = os.environ.get("ASK_BANK", "auto").strip().lower()
+    today_day = date.today().day
+
+    if ask_bank_env == "all":
+        banks = ["HSBC", "VIB", "VPBank"]
+    elif ask_bank_env not in ("auto", ""):
+        # Manual trigger với tên ngân hàng cụ thể
+        banks = [ask_bank_env.upper()]
+        if banks[0] == "VPBANK":
+            banks = ["VPBank"]
+    else:
+        # Tự detect theo ngày
+        banks = SCHEDULE.get(today_day, [])
+
+    if not banks:
+        print(f"⏭️ Hôm nay (ngày {today_day}) không có ngân hàng nào cần hỏi")
+        return
+
+    examples = {
+        "HSBC":   "HSBC 15/04/2026 500000",
+        "VIB":    "VIB 20/04/2026 300000",
+        "VPBank": "VPBank 22/04/2026 1200000",
+    }
+    example_lines = "\n".join(f"<code>{examples[b]}</code>" for b in banks if b in examples)
+
     message = (
-        "📋 <b>Nhập thông tin sao kê thẻ tháng này</b>\n\n"
-        "Vui lòng reply theo format:\n"
-        "<code>HSBC DD/MM/YYYY số_tiền</code>\n\n"
-        "Ví dụ:\n"
-        "<code>HSBC 15/04/2026 500000</code>\n"
-        "<code>VIB 20/04/2026 300000</code>\n"
-        "<code>VPBank 22/04/2026 1200000</code>\n\n"
-        "Ngân hàng cần nhập: " + ", ".join(f"<b>{b}</b>" for b in MANUAL_BANKS)
+        f"📋 <b>Nhập thông tin sao kê thẻ tháng này</b>\n\n"
+        f"Ngân hàng cần nhập: " + ", ".join(f"<b>{b}</b>" for b in banks) + "\n\n"
+        f"Reply theo format:\n"
+        f"<code>TÊN_NGÂN_HÀNG DD/MM/YYYY số_tiền</code>\n\n"
+        f"Ví dụ:\n{example_lines}"
     )
     send_telegram(message)
-    print("✅ Đã gửi yêu cầu nhập thông tin thủ công")
+    print(f"✅ Đã gửi yêu cầu nhập thông tin cho: {', '.join(banks)}")
 
 
 def collect_manual_replies():

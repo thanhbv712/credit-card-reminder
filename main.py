@@ -162,6 +162,17 @@ def send_telegram(message: str):
 # Dedup helpers
 # ──────────────────────────────────────────────
 
+def parse_balance_input(raw: str) -> str:
+    """Convert '12936k' → '12,936,000 VNĐ', '1560k' → '1,560,000 VNĐ', plain number as-is."""
+    raw = raw.strip()
+    m = re.match(r"^([\d,]+\.?\d*)k$", raw, re.IGNORECASE)
+    if m:
+        num = float(m.group(1).replace(",", "")) * 1000
+        return f"{int(num):,} VNĐ"
+    # plain number
+    return f"{raw} VNĐ" if raw else "N/A"
+
+
 def load_manual_dates() -> list[dict]:
     """Load manually entered due dates for HSBC, VIB, VPBank."""
     if not MANUAL_DATES_FILE.exists():
@@ -179,10 +190,11 @@ def load_manual_dates() -> list[dict]:
                 due_date = date(int(y), int(m), int(d))
             else:
                 due_date = date.fromisoformat(due_str)
+            raw_balance = entry.get("balance", entry.get("min_payment", "")) or ""
             results.append({
                 "bank": entry.get("bank", "Manual"),
                 "due_date": due_date,
-                "min_payment": entry.get("min_payment", "N/A") or "N/A",
+                "balance": parse_balance_input(raw_balance) if raw_balance else "N/A",
             })
         except (ValueError, AttributeError):
             print(f"⚠️ Ngày không hợp lệ cho {entry.get('bank')}: {due_str}")
@@ -239,11 +251,12 @@ def main():
         print(f"  🏦 {bank}: due={due_date}, min={min_payment}")
 
         if due_date == target_date and alert_key not in sent_alerts:
+            balance = result.get("balance", result.get("min_payment", "N/A"))
             message = (
                 f"⚠️ <b>Nhắc thanh toán thẻ tín dụng</b>\n\n"
                 f"🏦 Ngân hàng: <b>{bank}</b>\n"
                 f"📅 Ngày đến hạn: <b>{due_date.strftime('%d/%m/%Y')}</b>\n"
-                f"💳 Số tiền tối thiểu: <b>{min_payment}</b>\n\n"
+                f"💳 Dư nợ cuối kỳ: <b>{balance}</b>\n\n"
                 f"⏰ Hãy thanh toán trước ngày mai để tránh phí phạt!"
             )
             send_telegram(message)
@@ -291,9 +304,9 @@ def ask_manual_input():
         return
 
     examples = {
-        "HSBC":   "HSBC 15/04/2026 500000",
-        "VIB":    "VIB 20/04/2026 300000",
-        "VPBank": "VPBank 22/04/2026 1200000",
+        "HSBC":   "HSBC 15/04/2026 12936k",
+        "VIB":    "VIB 20/04/2026 8500k",
+        "VPBank": "VPBank 22/04/2026 15600k",
     }
     example_lines = "\n".join(f"<code>{examples[b]}</code>" for b in banks if b in examples)
 
@@ -301,7 +314,8 @@ def ask_manual_input():
         f"📋 <b>Nhập thông tin sao kê thẻ tháng này</b>\n\n"
         f"Ngân hàng cần nhập: " + ", ".join(f"<b>{b}</b>" for b in banks) + "\n\n"
         f"Reply theo format:\n"
-        f"<code>TÊN_NGÂN_HÀNG DD/MM/YYYY số_tiền</code>\n\n"
+        f"<code>TÊN_NGÂN_HÀNG DD/MM/YYYY dư_nợ_cuối_kỳ</code>\n\n"
+        f"Số tiền hỗ trợ: <code>12936k</code> = 12,936,000đ\n\n"
         f"Ví dụ:\n{example_lines}"
     )
     send_telegram(message)
@@ -333,7 +347,7 @@ def collect_manual_replies():
     existing_map = {e["bank"]: e for e in existing}
 
     pattern = re.compile(
-        r"^(HSBC|VIB|VPBank)\s+(\d{1,2}/\d{1,2}/\d{4})\s+([\d,. ]+(?:VND|đ)?)",
+        r"^(HSBC|VIB|VPBank)\s+(\d{1,2}/\d{1,2}/\d{4})\s+([\d,. ]+k?(?:VND|VNĐ|đ)?)",
         re.IGNORECASE
     )
 
@@ -362,7 +376,7 @@ def collect_manual_replies():
                 existing_map[bank] = {
                     "bank": bank,
                     "due_date": due_str,
-                    "min_payment": amount,
+                    "balance": amount,
                 }
                 print(f"  ✅ Parsed: {bank} → {due_str} | {amount}")
                 parsed_count += 1

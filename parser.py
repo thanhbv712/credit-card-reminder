@@ -57,18 +57,17 @@ def parse_bidv(subject: str, body: str, sender: str = "") -> dict | None:
         r"Due Date\s+([\d\-/]+)",
         r"[Hh][aạ]n\s+thanh\s+to[áa]n[^:]*[:\s]+([\d\-/]+)",
     ]
-    min_keywords = [
-        # "Số tiền thanh toán tối thiểu/Minimum due -2,198,944.00"
-        r"S[oố] ti[eề]n thanh to[áa]n t[oố]i thi[eể]u/Minimum due\s+-?([\d,]+\.?\d*)",
-        r"Minimum due\s+-?([\d,]+\.?\d*)",
-        r"t[oố]i thi[eể]u[^:]*[:\s]-?([\d,]+\.?\d*)",
+    balance_keywords = [
+        # "Dư nợ cuối kỳ/Closing Balance -43,978,880.00"
+        r"D[ưu] n[ợo] cu[oố]i k[ỳy]/Closing Balance\s+-?([\d,]+\.?\d*)",
+        r"Closing Balance\s+-?([\d,]+\.?\d*)",
     ]
 
     due_date = _extract_date(body, due_keywords)
-    min_payment = _extract_text(body, min_keywords)
+    balance = _extract_text(body, balance_keywords)
 
     if due_date:
-        return {"bank": "BIDV", "due_date": due_date, "min_payment": f"{min_payment} VND" if min_payment else "N/A"}
+        return {"bank": "BIDV", "due_date": due_date, "balance": f"{balance} VND" if balance else "N/A"}
     return None
 
 
@@ -81,16 +80,16 @@ def parse_shb(subject: str, body: str, sender: str = "") -> dict | None:
         # "Ngày đến hạn thanh toán: 09/04/2026"
         r"Ng[àa]y [đd][eé]n h[aạ]n thanh to[áa]n\s*:\s*([\d/\-]+)",
     ]
-    min_keywords = [
-        # "Thanh toán tối thiểu (VNĐ): 5,557,085"
-        r"Thanh to[áa]n t[oố]i thi[eể]u\s*\([^)]*\)\s*:\s*([\d,]+)",
+    balance_keywords = [
+        # "Dư nợ cuối kỳ (VNĐ): 111,141,706"
+        r"D[ưu] n[ợo] cu[oố]i k[ỳy]\s*\([^)]*\)\s*:\s*([\d,]+)",
     ]
 
     due_date = _extract_date(body, due_keywords)
-    min_payment = _extract_text(body, min_keywords)
+    balance = _extract_text(body, balance_keywords)
 
     if due_date:
-        return {"bank": "SHB", "due_date": due_date, "min_payment": f"{min_payment} VNĐ" if min_payment else "N/A"}
+        return {"bank": "SHB", "due_date": due_date, "balance": f"{balance} VNĐ" if balance else "N/A"}
     return None
 
 

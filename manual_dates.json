@@ -1,8 +1,8 @@
 [
   {
     "bank": "HSBC",
-    "due_date": "",
-    "balance": ""
+    "due_date": "29/03/2026",
+    "balance": "12456k"
   },
   {
     "bank": "VIB",
@@ -11,7 +11,7 @@
   },
   {
     "bank": "VPBank",
-    "due_date": "",
-    "balance": ""
+    "due_date": "13/04/2026",
+    "balance": "14236k"
   }
 ]

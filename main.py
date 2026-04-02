@@ -264,17 +264,24 @@ def sync_auto_dates():
     # Group by bank/card, giữ email mới nhất (Gmail sort mới nhất trước)
     best: dict[str, dict] = {}
     for email in emails:
+        print(f"  📨 From: {email.get('sender','')[:60]}")
+        print(f"     Subject: {email.get('subject','')[:80]}")
         result = parse_email(email["subject"], email["body"], email.get("sender", ""))
         if not result:
+            # Debug: show first 300 chars of body để kiểm tra format
+            preview = email.get("body", "")[:300].replace("\n", " ")
+            print(f"     ⚠️ Không parse được. Body preview: {preview}")
             continue
         bank = result["bank"]
         card = result.get("card_number", "")
         key = f"{bank}:{card}" if card else bank
         if key not in best:
             best[key] = result
+            print(f"     ✅ Parsed: {bank} {card} → due {result['due_date']} | {result.get('balance','N/A')}")
 
     if not best:
-        print("✅ Không có email sao kê mới")
+        print("⚠️ Parser không match được email nào — xem log phía trên để debug")
+        send_telegram("⚠️ <b>Sync BIDV/SHB:</b> Tìm được email nhưng không đọc được dữ liệu. Cần kiểm tra lại parser.")
         return
 
     updated_entries = []

@@ -98,11 +98,19 @@ def get_email_body(msg_data: dict) -> str:
                 text += extract_parts(part["parts"])
         return text
 
+    def decode_body(data: str, mime: str = "") -> str:
+        raw = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+        if "html" in mime or raw.strip().startswith("<"):
+            raw = html_lib.unescape(raw)
+            raw = re.sub(r"<[^>]+>", " ", raw)
+        return raw
+
     if "parts" in payload:
         return extract_parts(payload["parts"])
     elif payload.get("body", {}).get("data"):
         data = payload["body"]["data"]
-        return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+        mime = payload.get("mimeType", "")
+        return decode_body(data, mime)
     return ""
 
 

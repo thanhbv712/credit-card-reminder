@@ -82,16 +82,20 @@ def parse_bidv(subject: str, body: str, sender: str = "") -> dict | None:
 
 def parse_shb(subject: str, body: str, sender: str = "") -> dict | None:
     """SHB credit card statement email — subject contains 'Bang sao ke dien tu the tin dung SHB VISA'."""
-    if not re.search(r"Bang sao ke dien tu the tin dung SHB VISA", subject, re.IGNORECASE):
+    if not re.search(r"Bang sao ke dien tu the tin dung SHB", subject, re.IGNORECASE):
         return None
 
     due_keywords = [
-        # "Ngày đến hạn thanh toán: 09/04/2026"
-        r"Ng[àa]y [đd][eé]n h[aạ]n thanh to[áa]n\s*:\s*([\d/\-]+)",
+        # "Ngày đến hạn thanh toán: 09/04/2026" — match cả trường hợp đã strip HTML
+        r"[Nn]g.{1,5}y\s+.{1,10}n\s+h.{1,5}n\s+thanh\s+to.{1,5}n\s*:\s*([\d/\-]+)",
+        r"[Hh].{1,5}n\s+thanh\s+to.{1,5}n\s*:\s*([\d/\-]+)",
+        # fallback: tìm pattern ngày sau keyword
+        r"[\u0111\u0110d][e\u1ebf\u1ec1\u1ec3\u1ec5]\u0301?\s*n\s+h.{1,5}n[^:]*:\s*([\d/\-]+)",
     ]
     balance_keywords = [
         # "Dư nợ cuối kỳ (VNĐ): 111,141,706"
-        r"D[ưu] n[ợo] cu[oố]i k[ỳy]\s*\([^)]*\)\s*:\s*([\d,]+)",
+        r"[Dd].{1,5}\s+n.{1,5}\s+cu.{1,5}i\s+k.{1,5}\s*\([^)]*\)\s*:\s*([\d,]+)",
+        r"[Dd].{1,3}\s+n.{1,3}\s+cu.{1,3}i\s+k.{1,3}[^:]*:\s*([\d,]+)",
     ]
 
     due_date = _extract_date(body, due_keywords)
@@ -103,8 +107,9 @@ def parse_shb(subject: str, body: str, sender: str = "") -> dict | None:
 
 
 def parse_vib(subject: str, body: str, sender: str = "") -> dict | None:
-    """VIB credit card statement email."""
-    if not re.search(r"\bVIB\b|sao k[eê]|th[eẻ] t[ií]n d[uụ]ng", subject + body, re.IGNORECASE):
+    """VIB credit card statement email — must have VIB in subject or sender."""
+    # Yêu cầu VIB rõ ràng trong subject hoặc sender, tránh match nhầm ngân hàng khác
+    if not re.search(r"\bVIB\b", subject + sender, re.IGNORECASE):
         return None
 
     due_keywords = [

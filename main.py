@@ -7,6 +7,7 @@ import os
 import base64
 import json
 import re
+import sys
 from datetime import date, timedelta
 from email import message_from_bytes
 from pathlib import Path
@@ -249,5 +250,107 @@ def main():
     save_sent_alerts(sent_alerts)
 
 
+def ask_manual_input():
+    """
+    Gửi tin nhắn hỏi Thành nhập ngày đến hạn cho 3 ngân hàng thủ công.
+    Chạy vào ngày 1 hàng tháng qua GitHub Actions.
+    """
+    MANUAL_BANKS = ["HSBC", "VIB", "VPBank"]
+    message = (
+        "📋 <b>Nhập thông tin sao kê thẻ tháng này</b>\n\n"
+        "Vui lòng reply theo format:\n"
+        "<code>HSBC DD/MM/YYYY số_tiền</code>\n\n"
+        "Ví dụ:\n"
+        "<code>HSBC 15/04/2026 500000</code>\n"
+        "<code>VIB 20/04/2026 300000</code>\n"
+        "<code>VPBank 22/04/2026 1200000</code>\n\n"
+        "Ngân hàng cần nhập: " + ", ".join(f"<b>{b}</b>" for b in MANUAL_BANKS)
+    )
+    send_telegram(message)
+    print("✅ Đã gửi yêu cầu nhập thông tin thủ công")
+
+
+def collect_manual_replies():
+    """
+    Đọc các tin nhắn reply từ Telegram, parse và lưu vào manual_dates.json.
+    Chạy sau ask_manual_input() vài tiếng (cron riêng).
+    """
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    # Lấy offset từ file để không đọc lại tin cũ
+    offset_file = Path("telegram_offset.txt")
+    offset = int(offset_file.read_text()) if offset_file.exists() else 0
+
+    resp = requests.get(url, params={"offset": offset, "limit": 50, "timeout": 5}, timeout=15)
+    resp.raise_for_status()
+    updates = resp.json().get("result", [])
+
+    if not updates:
+        print("📭 Không có reply mới")
+        return
+
+    # Load existing manual dates
+    existing = []
+    if MANUAL_DATES_FILE.exists():
+        existing = json.loads(MANUAL_DATES_FILE.read_text(encoding="utf-8"))
+    existing_map = {e["bank"]: e for e in existing}
+
+    pattern = re.compile(
+        r"^(HSBC|VIB|VPBank)\s+(\d{1,2}/\d{1,2}/\d{4})\s+([\d,. ]+(?:VND|đ)?)",
+        re.IGNORECASE
+    )
+
+    parsed_count = 0
+    last_update_id = offset
+
+    for update in updates:
+        last_update_id = update["update_id"] + 1
+        msg = update.get("message", {})
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        text = msg.get("text", "").strip()
+
+        # Chỉ xử lý tin từ chat của Thành
+        if chat_id != TELEGRAM_CHAT_ID:
+            continue
+
+        for line in text.splitlines():
+            m = pattern.match(line.strip())
+            if m:
+                bank = m.group(1).upper()
+                # Normalize bank name
+                if bank == "VPBANK":
+                    bank = "VPBank"
+                due_str = m.group(2)
+                amount = m.group(3).strip()
+                existing_map[bank] = {
+                    "bank": bank,
+                    "due_date": due_str,
+                    "min_payment": amount,
+                }
+                print(f"  ✅ Parsed: {bank} → {due_str} | {amount}")
+                parsed_count += 1
+
+    # Save updated offset
+    offset_file.write_text(str(last_update_id))
+
+    if parsed_count > 0:
+        updated = list(existing_map.values())
+        MANUAL_DATES_FILE.write_text(
+            json.dumps(updated, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+        send_telegram(f"✅ Đã lưu thông tin <b>{parsed_count}</b> thẻ. Mình sẽ nhắc bạn trước 1 ngày đến hạn!")
+        print(f"✅ Saved {parsed_count} manual entries")
+    else:
+        print("⚠️ Không tìm thấy dữ liệu hợp lệ trong các reply")
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "ask":
+            ask_manual_input()
+        elif sys.argv[1] == "collect":
+            collect_manual_replies()
+        else:
+            print(f"Unknown command: {sys.argv[1]}")
+    else:
+        main()
